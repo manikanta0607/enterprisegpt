@@ -78,6 +78,21 @@ class Settings(BaseSettings):
     # --- Logging ---
     log_level: str = Field(default="INFO", description="Application log level")
 
+    # --- Auth: JWT ---
+    jwt_secret_key: str = Field(
+        default="CHANGE_ME_IN_PRODUCTION", description="Secret key used to sign JWTs"
+    )
+    jwt_algorithm: str = Field(default="HS256", description="JWT signing algorithm")
+    access_token_expire_minutes: int = Field(
+        default=30, description="Access token lifetime in minutes"
+    )
+    refresh_token_expire_days: int = Field(
+        default=14, description="Refresh token lifetime in days"
+    )
+
+    # --- Auth: Google OAuth ---
+    google_client_id: str = Field(default="", description="Google OAuth client ID")
+
     @property
     def allowed_origins(self) -> List[str]:
         """Parse the comma-separated origins string into a list.

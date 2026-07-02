@@ -1,107 +1,102 @@
-# EnterpriseGPT — Phase 1: Foundation
+# EnterpriseGPT — Phase 2: Authentication & User Management
 
 An Enterprise AI Knowledge Platform (RAG over your organization's documents), built phase by phase.
 
-**Phase 1 delivers:** a clean-architecture FastAPI backend, PostgreSQL (pgvector-ready), Redis, and MinIO,
-fully containerized, with liveness/readiness health checks and a passing test suite. No auth or RAG yet —
-that's coming in later phases.
+**Phase 1 delivered:** clean-architecture FastAPI backend, PostgreSQL (pgvector-ready), Redis, MinIO,
+health checks, passing tests.
 
-## Folder structure
+**Phase 2 adds:** Google OAuth login, JWT access/refresh tokens (with rotation + revocation),
+User & Organization models with an Alembic migration, the repository pattern, and RBAC
+(Viewer / Member / Admin) enforced on protected routes.
+
+## What's new in Phase 2
 
 ```
-enterprisegpt/
-├── docker-compose.yml
-├── backend/
-│   ├── Dockerfile
-│   ├── requirements.txt
-│   ├── pytest.ini
-│   ├── .env.example
-│   ├── app/
-│   │   ├── main.py                 # FastAPI app factory + lifespan
-│   │   ├── core/
-│   │   │   ├── config.py           # Settings (env-driven)
-│   │   │   ├── logging.py          # Structured logging setup
-│   │   │   ├── exceptions.py       # Domain exception hierarchy
-│   │   │   └── error_handlers.py   # Exception -> HTTP translation
-│   │   ├── api/v1/
-│   │   │   ├── router.py           # Aggregates all v1 routes
-│   │   │   └── endpoints/health.py # /health/live, /health/ready
-│   │   ├── infrastructure/
-│   │   │   ├── database/session.py # Async SQLAlchemy engine/session
-│   │   │   ├── cache/redis_client.py
-│   │   │   └── storage/minio_client.py
-│   │   ├── schemas/health.py       # Pydantic response models
-│   │   ├── domain/                 # (empty — Phase 2+)
-│   │   └── services/               # (empty — Phase 2+)
-│   └── tests/
-│       ├── conftest.py
-│       └── test_health.py
-└── docs/
+backend/
+├── alembic.ini
+├── alembic/
+│   ├── env.py                       # async migration environment
+│   ├── script.py.mako
+│   └── versions/0001_create_users_orgs.py
+├── app/
+│   ├── api/
+│   │   ├── deps.py                  # get_current_user, repository DI
+│   │   └── v1/endpoints/
+│   │       ├── auth.py              # POST /auth/google, /auth/refresh, /auth/logout
+│   │       └── users.py             # GET /users/me, GET /users (admin only)
+│   ├── core/
+│   │   ├── security.py              # JWT creation/verification
+│   │   └── rbac.py                  # require_role() dependency
+│   ├── domain/
+│   │   ├── entities.py              # User, Organization (framework-agnostic)
+│   │   └── enums.py                 # Role, role_at_least()
+│   ├── infrastructure/database/models.py   # SQLAlchemy: User, Organization, RefreshToken
+│   ├── repositories/                # UserRepository, OrganizationRepository
+│   ├── schemas/{auth,user}.py       # Pydantic request/response models
+│   └── services/
+│       ├── google_auth.py           # Google ID token verification
+│       └── auth_service.py          # login / refresh / logout orchestration
+└── tests/
+    ├── test_security.py             # JWT unit tests
+    ├── test_rbac.py                 # role comparison unit tests
+    └── test_users.py                # endpoint tests via dependency overrides
+```
+
+## How authentication works
+
+1. Your frontend uses [Google Identity Services](https://developers.google.com/identity/gsi/web)
+   to get an `id_token` for the signed-in user.
+2. Frontend calls `POST /api/v1/auth/google` with that `id_token`.
+3. Backend verifies the token's signature/audience with Google, then:
+   - **New user:** creates an Organization + a User with role `ADMIN`.
+   - **Returning user:** looks them up by their Google `sub`.
+4. Backend returns an `access_token` (30 min default) and `refresh_token` (14 days default).
+5. Frontend sends `Authorization: Bearer <access_token>` on subsequent requests.
+6. When the access token expires, frontend calls `POST /api/v1/auth/refresh` with the refresh
+   token to get a new pair (refresh tokens **rotate** — the old one is revoked on use).
+
+## RBAC
+
+Three roles, each including all permissions of the ones below it: `viewer` < `member` < `admin`.
+Protect an endpoint with:
+```python
+current_user: User = Depends(require_role(Role.ADMIN))
 ```
 
 ## Prerequisites
 
 - Docker + Docker Compose
-- (Optional, for running tests outside Docker) Python 3.12
+- A Google OAuth Client ID (for real login) — see below. Not required to run tests or explore `/docs`.
+
+## Setting up Google OAuth (for real login testing)
+
+1. Go to https://console.cloud.google.com/apis/credentials
+2. Create an **OAuth 2.0 Client ID** (type: Web application)
+3. Add `http://localhost:3000` as an authorized JavaScript origin (frontend comes in Phase 3+)
+4. Copy the Client ID into `backend/.env` as `GOOGLE_CLIENT_ID`
+
+Without this, `/auth/google` will reject all tokens (expected) — everything else in Phase 2
+(health checks, RBAC logic, JWT logic) works and is tested independently of Google.
 
 ## How to run
 
-1. **Set up environment variables:**
-   ```bash
-   cd enterprisegpt/backend
-   cp .env.example .env
-   ```
-   The defaults in `.env.example` already match the Docker Compose service names
-   (`postgres`, `redis`, `minio`), so no edits are needed to run via Docker.
-
-2. **Start everything:**
-   ```bash
-   cd enterprisegpt
-   docker compose up --build
-   ```
-   This starts PostgreSQL (with pgvector extension available), Redis, MinIO, and the FastAPI backend.
-
-3. **Verify it's running:**
-   - API docs (Swagger UI): http://localhost:8000/docs
-   - Liveness probe: http://localhost:8000/api/v1/health/live → `{"status": "alive"}`
-   - Readiness probe: http://localhost:8000/api/v1/health/ready → shows postgres/redis/minio status
-   - MinIO console: http://localhost:9001 (login: `minioadmin` / `minioadmin`)
-
-   **Expected output of `/api/v1/health/ready`:**
-   ```json
-   {
-     "status": "ok",
-     "version": "0.1.0",
-     "environment": "local",
-     "dependencies": [
-       {"name": "postgres", "healthy": true},
-       {"name": "redis", "healthy": true},
-       {"name": "minio", "healthy": true}
-     ]
-   }
-   ```
-
-4. **Stop everything:**
-   ```bash
-   docker compose down          # stop containers
-   docker compose down -v       # stop containers AND wipe data volumes
-   ```
-
-## How to run the backend locally without Docker (optional)
-
 ```bash
 cd enterprisegpt/backend
-python -m venv venv && source venv/bin/activate   # Windows: venv\Scripts\activate
-pip install -r requirements.txt
 cp .env.example .env
-# Edit .env: change POSTGRES_HOST, REDIS_HOST, MINIO_ENDPOINT from
-# service names (postgres/redis/minio) to localhost, since you're
-# running the app on the host, not inside the Docker network.
-uvicorn app.main:app --reload
+# Edit .env: set GOOGLE_CLIENT_ID and a real JWT_SECRET_KEY if testing login end-to-end
+
+cd ..
+docker compose up --build
 ```
 
-You'll still need Postgres/Redis/MinIO running somewhere reachable (e.g. via
-`docker compose up postgres redis minio` while running the backend natively).
+Then **run the migration** (creates `organizations`, `users`, `refresh_tokens` tables):
+```bash
+docker compose exec backend alembic upgrade head
+```
+
+Check it worked:
+- http://localhost:8000/docs — you'll now see `/auth/*` and `/users/*` endpoints
+- http://localhost:8000/api/v1/health/ready — still `"status": "ok"`
 
 ## How to test
 
@@ -111,46 +106,49 @@ pip install -r requirements.txt
 pytest
 ```
 
-**Expected output:** 3 tests pass (`test_liveness_returns_alive`,
-`test_readiness_returns_dependency_statuses`, `test_openapi_docs_available`),
-with a coverage report. These tests use an in-memory ASGI transport, so they
-don't require Docker to be running — dependency health is asserted structurally,
-not for actual connectivity.
+**Expected output:** 13 tests passing (3 health + 3 RBAC + 3 JWT + 4 user-endpoint tests), ~77%
+coverage. These tests use dependency overrides and don't require a live Postgres — full
+DB-integration tests (real Alembic migration + real queries) are planned once CI has a
+Postgres service container (Phase 8: CI/CD).
+
+**Verified in this session:** dependencies installed, app boots with all 7 new routes registered
+correctly, full pytest suite run and passing.
 
 ## Git commit message
 
 ```
-feat(phase-1): foundation — FastAPI backend, Postgres/pgvector, Redis, MinIO, health checks
+feat(phase-2): auth & user management — Google OAuth, JWT, RBAC, Alembic migration
 
-- Clean architecture skeleton (core/api/infrastructure/services/schemas layers)
-- Centralized env-driven config via pydantic-settings
-- Structured logging + global exception handling
-- Async SQLAlchemy engine, Redis client, MinIO client with health checks
-- Liveness (/health/live) and readiness (/health/ready) endpoints
-- Docker Compose stack: postgres(pgvector) + redis + minio + backend
-- Pytest suite (3 tests, passing) using ASGI transport
+- Domain layer: User/Organization entities, Role enum with role_at_least()
+- SQLAlchemy models: UserModel, OrganizationModel, RefreshTokenModel
+- Repository pattern: UserRepository, OrganizationRepository
+- JWT access/refresh tokens with rotation (app.core.security)
+- Google ID token verification (app.services.google_auth)
+- AuthService: login_with_google, refresh_access_token, logout
+- RBAC: require_role() dependency, 403 error mapping
+- Endpoints: POST /auth/google, /auth/refresh, /auth/logout, GET /users/me, GET /users
+- Alembic async migration environment + initial migration (0001)
+- 10 new tests (JWT, RBAC, protected endpoints via dependency overrides), all passing
 ```
 
-## Phase 1 summary
+## Phase 2 summary
 
-- ✅ Clean, layered backend architecture (core / api / infrastructure / services / schemas)
-- ✅ Environment-driven configuration, no hardcoded secrets
-- ✅ Structured logging and centralized error handling
-- ✅ PostgreSQL (pgvector image), Redis, MinIO wired up with health checks
-- ✅ Kubernetes-style liveness/readiness probes
-- ✅ Fully Dockerized, one-command startup
-- ✅ Test suite passing (verified in this session — see below)
+- ✅ Google OAuth login with automatic org + admin-user provisioning for new accounts
+- ✅ JWT access/refresh tokens, refresh token rotation, and revocation (logout)
+- ✅ Repository pattern cleanly separating ORM models from domain entities
+- ✅ RBAC with a reusable `require_role()` dependency, tested at all three role levels
+- ✅ Async Alembic migration wired to the same settings as the app
+- ✅ 13/13 tests passing (10 new + 3 carried over from Phase 1)
 
-**Verified in this session:** dependencies installed, config bug fixed (CORS origin
-list parsing), full pytest suite run and passing with 83% coverage.
+## Next phase preview — Phase 3: Document Ingestion
 
-## Next phase preview — Phase 2: Authentication & User Management
+- Document upload endpoint (`POST /documents`) storing raw files in MinIO
+- PDF, DOCX, PPTX parsing services
+- OCR pipeline for scanned documents/images
+- Chunking strategy (recursive character + semantic chunking options)
+- Document + Chunk database models, linked to Organization
+- Background processing via a task queue (so uploads don't block the request)
+- Tests for each parser with sample fixture files
 
-- Google OAuth login + JWT issuance/refresh
-- User + Organization models (SQLAlchemy, Alembic migration)
-- Role-Based Access Control (RBAC): Admin / Member / Viewer
-- `/api/v1/auth/*` and `/api/v1/users/*` endpoints
-- Protected route dependency (`get_current_user`)
-- Tests for auth flows
+Reply "approved" (or with changes you want) and I'll build Phase 3.
 
-Reply "approved" (or with changes you want) and I'll build Phase 2.

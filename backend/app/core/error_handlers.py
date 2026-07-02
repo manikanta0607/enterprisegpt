@@ -15,6 +15,7 @@ from app.core.exceptions import (
     ValidationError,
 )
 from app.core.logging import get_logger
+from app.core.rbac import InsufficientRoleError
 
 logger = get_logger(__name__)
 
@@ -23,6 +24,7 @@ _STATUS_MAP = {
     ValidationError: status.HTTP_422_UNPROCESSABLE_ENTITY,
     ConflictError: status.HTTP_409_CONFLICT,
     ServiceUnavailableError: status.HTTP_503_SERVICE_UNAVAILABLE,
+    InsufficientRoleError: status.HTTP_403_FORBIDDEN,
 }
 
 
