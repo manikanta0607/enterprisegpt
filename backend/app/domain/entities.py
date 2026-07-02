@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
-from app.domain.enums import Role
+from app.domain.enums import DocumentStatus, Role
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,4 +31,31 @@ class User:
     role: Role
     organization_id: UUID
     is_active: bool
+    created_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class Document:
+    """An uploaded source document within an organization's knowledge base."""
+
+    id: UUID
+    organization_id: UUID
+    uploaded_by_user_id: UUID
+    filename: str
+    content_type: str
+    storage_key: str
+    status: DocumentStatus
+    error_message: str | None
+    created_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class Chunk:
+    """A single chunk of extracted text from a parsed document."""
+
+    id: UUID
+    document_id: UUID
+    chunk_index: int
+    content: str
+    token_count: int
     created_at: datetime

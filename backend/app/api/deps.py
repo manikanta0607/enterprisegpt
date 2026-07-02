@@ -14,6 +14,8 @@ from app.core.exceptions import NotFoundError, ValidationError
 from app.core.security import TokenType, decode_token
 from app.domain.entities import User
 from app.infrastructure.database.session import get_db_session
+from app.repositories.chunk_repository import ChunkRepository
+from app.repositories.document_repository import DocumentRepository
 from app.repositories.user_repository import UserRepository
 
 _bearer_scheme = HTTPBearer(auto_error=True)
@@ -31,6 +33,34 @@ async def get_user_repository(
         A `UserRepository` instance.
     """
     return UserRepository(session)
+
+
+async def get_document_repository(
+    session: AsyncSession = Depends(get_db_session),
+) -> DocumentRepository:
+    """Provide a `DocumentRepository` bound to the request's DB session.
+
+    Args:
+        session: The request-scoped database session.
+
+    Returns:
+        A `DocumentRepository` instance.
+    """
+    return DocumentRepository(session)
+
+
+async def get_chunk_repository(
+    session: AsyncSession = Depends(get_db_session),
+) -> ChunkRepository:
+    """Provide a `ChunkRepository` bound to the request's DB session.
+
+    Args:
+        session: The request-scoped database session.
+
+    Returns:
+        A `ChunkRepository` instance.
+    """
+    return ChunkRepository(session)
 
 
 async def get_current_user(

@@ -31,3 +31,14 @@ def role_at_least(role: Role, minimum: Role) -> bool:
         True if `role` is equal to or more privileged than `minimum`.
     """
     return _ROLE_RANK[role] >= _ROLE_RANK[minimum]
+
+
+class DocumentStatus(str, Enum):
+    """Lifecycle states of an uploaded document as it moves through the
+    ingestion pipeline: storage -> parsing -> chunking -> ready for retrieval.
+    """
+
+    PENDING = "pending"
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    FAILED = "failed"
