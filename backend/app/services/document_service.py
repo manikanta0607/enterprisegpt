@@ -13,6 +13,7 @@ grows, and is planned as part of Phase 8 (scaling & background workers).
 
 import uuid
 
+from app.core.config import get_settings
 from app.core.exceptions import NotFoundError, ValidationError
 from app.core.logging import get_logger
 from app.domain.entities import Document
@@ -26,6 +27,7 @@ from app.infrastructure.storage.document_storage import (
 from app.repositories.chunk_repository import ChunkRepository
 from app.repositories.document_repository import DocumentRepository
 from app.services.chunking import chunk_text
+from app.services.embeddings import EmbeddingService
 from app.services.parsers.factory import SUPPORTED_CONTENT_TYPES, get_parser_for_content_type
 
 logger = get_logger(__name__)
@@ -124,6 +126,35 @@ class DocumentService:
         return await self._documents.list_by_organization(organization_id)
 
 
+async def _embed_chunks(chunk_repo: ChunkRepository, chunks: list) -> None:
+    """Generate and persist embeddings for a batch of newly created chunks.
+
+    Skips embedding generation entirely (logging a warning once) if no
+    Google API key is configured, so the ingestion pipeline still completes
+    successfully in that case — chunks simply remain searchable via BM25
+    only until embeddings are backfilled.
+
+    Args:
+        chunk_repo: Repository used to persist computed embeddings.
+        chunks: The `Chunk` entities just created for this document.
+    """
+    settings = get_settings()
+    if not settings.google_api_key:
+        logger.warning(
+            "GOOGLE_API_KEY not configured; skipping embedding generation for %d chunks",
+            len(chunks),
+        )
+        return
+
+    embedding_service = EmbeddingService()
+    for chunk in chunks:
+        try:
+            vector = embedding_service.embed_text(chunk.content, task_type="retrieval_document")
+            await chunk_repo.update_embedding(chunk.id, vector)
+        except Exception:
+            logger.exception("Failed to embed chunk %s; leaving unembedded", chunk.id)
+
+
 async def process_document(document_id: uuid.UUID) -> None:
     """Background pipeline: download, parse, chunk, and persist a document.
 
@@ -155,10 +186,12 @@ async def process_document(document_id: uuid.UUID) -> None:
                 raise ValidationError("No extractable text was found in this document")
 
             text_chunks = chunk_text(extracted_text)
-            await chunk_repo.bulk_create(
+            created_chunks = await chunk_repo.bulk_create(
                 document_id,
                 [(c.index, c.content, c.token_count) for c in text_chunks],
             )
+
+            await _embed_chunks(chunk_repo, created_chunks)
 
             await document_repo.update_status(document_id, DocumentStatus.COMPLETED)
             logger.info(

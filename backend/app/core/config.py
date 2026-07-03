@@ -93,6 +93,20 @@ class Settings(BaseSettings):
     # --- Auth: Google OAuth ---
     google_client_id: str = Field(default="", description="Google OAuth client ID")
 
+    # --- Google AI: Embeddings & Generation ---
+    google_api_key: str = Field(
+        default="", description="Google AI Studio API key for embeddings/generation"
+    )
+    embedding_model: str = Field(
+        default="models/text-embedding-004", description="Google embedding model name"
+    )
+    embedding_dimensions: int = Field(
+        default=768, description="Output dimensionality of the embedding model"
+    )
+    query_rewrite_model: str = Field(
+        default="models/gemini-1.5-flash", description="Lightweight model used for query rewriting"
+    )
+
     @property
     def allowed_origins(self) -> List[str]:
         """Parse the comma-separated origins string into a list.

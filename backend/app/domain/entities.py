@@ -59,3 +59,4 @@ class Chunk:
     content: str
     token_count: int
     created_at: datetime
+    embedding: list[float] | None = None

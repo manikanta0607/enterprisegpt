@@ -8,10 +8,12 @@ the service layer — repositories are the only place that should import both.
 import uuid
 from datetime import datetime, timezone
 
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.core.config import get_settings
 from app.domain.enums import DocumentStatus, Role
 from app.infrastructure.database.session import Base
 
@@ -129,6 +131,9 @@ class ChunkModel(Base):
     chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     token_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    embedding: Mapped[list[float] | None] = mapped_column(
+        Vector(get_settings().embedding_dimensions), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
     document: Mapped["DocumentModel"] = relationship(back_populates="chunks")
