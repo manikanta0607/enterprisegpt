@@ -106,6 +106,18 @@ class Settings(BaseSettings):
     query_rewrite_model: str = Field(
         default="models/gemini-1.5-flash", description="Lightweight model used for query rewriting"
     )
+    generation_model: str = Field(
+        default="models/gemini-1.5-flash", description="Model used for RAG answer generation"
+    )
+    max_history_messages: int = Field(
+        default=10, description="Number of recent messages included verbatim in the prompt"
+    )
+    summarize_after_messages: int = Field(
+        default=20, description="Message count at which older history is compressed to a summary"
+    )
+    search_top_k: int = Field(
+        default=5, description="Number of chunks retrieved per RAG query"
+    )
 
     @property
     def allowed_origins(self) -> List[str]:

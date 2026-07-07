@@ -15,7 +15,9 @@ from app.core.security import TokenType, decode_token
 from app.domain.entities import User
 from app.infrastructure.database.session import get_db_session
 from app.repositories.chunk_repository import ChunkRepository
+from app.repositories.conversation_repository import ConversationRepository
 from app.repositories.document_repository import DocumentRepository
+from app.repositories.message_repository import MessageRepository
 from app.repositories.user_repository import UserRepository
 
 _bearer_scheme = HTTPBearer(auto_error=True)
@@ -61,6 +63,34 @@ async def get_chunk_repository(
         A `ChunkRepository` instance.
     """
     return ChunkRepository(session)
+
+
+async def get_conversation_repository(
+    session: AsyncSession = Depends(get_db_session),
+) -> ConversationRepository:
+    """Provide a `ConversationRepository` bound to the request's DB session.
+
+    Args:
+        session: The request-scoped database session.
+
+    Returns:
+        A `ConversationRepository` instance.
+    """
+    return ConversationRepository(session)
+
+
+async def get_message_repository(
+    session: AsyncSession = Depends(get_db_session),
+) -> MessageRepository:
+    """Provide a `MessageRepository` bound to the request's DB session.
+
+    Args:
+        session: The request-scoped database session.
+
+    Returns:
+        A `MessageRepository` instance.
+    """
+    return MessageRepository(session)
 
 
 async def get_current_user(

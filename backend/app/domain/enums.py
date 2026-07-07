@@ -42,3 +42,10 @@ class DocumentStatus(str, Enum):
     PROCESSING = "processing"
     COMPLETED = "completed"
     FAILED = "failed"
+
+
+class MessageRole(str, Enum):
+    """Who authored a message in a conversation."""
+
+    USER = "user"
+    ASSISTANT = "assistant"

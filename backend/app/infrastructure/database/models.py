@@ -9,12 +9,12 @@ import uuid
 from datetime import datetime, timezone
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.config import get_settings
-from app.domain.enums import DocumentStatus, Role
+from app.domain.enums import DocumentStatus, MessageRole, Role
 from app.infrastructure.database.session import Base
 
 
@@ -137,3 +137,50 @@ class ChunkModel(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
     document: Mapped["DocumentModel"] = relationship(back_populates="chunks")
+
+
+class ConversationModel(Base):
+    """ORM model for the `conversations` table."""
+
+    __tablename__ = "conversations"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False, index=True
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True
+    )
+    title: Mapped[str] = mapped_column(String(255), nullable=False, default="New conversation")
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+    messages: Mapped[list["MessageModel"]] = relationship(
+        back_populates="conversation", cascade="all, delete-orphan", order_by="MessageModel.created_at"
+    )
+
+
+class MessageModel(Base):
+    """ORM model for the `messages` table.
+
+    `citations` stores a JSON list of source references (chunk_id,
+    document_id, filename, excerpt) attached to assistant messages; it is
+    always empty for user messages.
+    """
+
+    __tablename__ = "messages"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    conversation_id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("conversations.id"), nullable=False, index=True
+    )
+    role: Mapped[str] = mapped_column(String(20), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    citations: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+    conversation: Mapped["ConversationModel"] = relationship(back_populates="messages")

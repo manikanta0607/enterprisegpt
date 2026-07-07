@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
-from app.domain.enums import DocumentStatus, Role
+from app.domain.enums import DocumentStatus, MessageRole, Role
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,3 +60,37 @@ class Chunk:
     token_count: int
     created_at: datetime
     embedding: list[float] | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class Citation:
+    """A source reference attached to an assistant message."""
+
+    chunk_id: UUID
+    document_id: UUID
+    filename: str
+    excerpt: str
+
+
+@dataclass(frozen=True, slots=True)
+class Conversation:
+    """A multi-turn chat thread between a user and the RAG assistant."""
+
+    id: UUID
+    organization_id: UUID
+    user_id: UUID
+    title: str
+    summary: str | None
+    created_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class Message:
+    """A single turn in a conversation."""
+
+    id: UUID
+    conversation_id: UUID
+    role: MessageRole
+    content: str
+    citations: list[Citation]
+    created_at: datetime
